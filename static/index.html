@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Nepali OCR Translate</title>
+    <style>
+      body { font-family: Arial, sans-serif; max-width: 800px; margin: 2rem auto; }
+      label { display:block; margin-top:1rem }
+      textarea { width:100%; height:120px }
+    </style>
+  </head>
+  <body>
+    <h1>Nepali OCR → English</h1>
+    <form id="uploadForm">
+      <label>File (PDF/DOCX/Image): <input type="file" name="file" id="file"/></label>
+      <button type="button" id="extractBtn">Extract</button>
+    </form>
+
+    <h2>Original Text</h2>
+    <textarea id="original"></textarea>
+
+    <button id="translateBtn">Translate</button>
+
+    <h2>Translated Text</h2>
+    <textarea id="translated"></textarea>
+
+    <h2>Download</h2>
+    <label>Format: <select id="format"><option value="pdf">PDF</option><option value="docx">DOCX</option></select></label>
+    <button id="downloadBtn">Download</button>
+
+    <script>
+      const statusEl = document.createElement('div');
+      statusEl.id = 'status';
+      statusEl.style.margin = '1rem 0';
+      const originalField = document.getElementById('original');
+      if (originalField && originalField.parentNode) {
+        originalField.parentNode.insertBefore(statusEl, originalField);
+      } else {
+        document.body.appendChild(statusEl);
+      }
+
+      function setStatus(msg, isError = false) {
+        statusEl.textContent = msg || '';
+        statusEl.style.color = isError ? 'crimson' : '#222';
+      }
+
+      async function safeFetchJSON(url, options = {}) {
+        const res = await fetch(url, options);
+        if (!res.ok) {
+          const txt = await res.text().catch(() => '');
+          throw new Error(`Request failed ${res.status}: ${txt}`);
+        }
+        return res.json();
+      }
+
+      async function safeFetchBlob(url, options = {}) {
+        const res = await fetch(url, options);
+        if (!res.ok) {
+          const txt = await res.text().catch(() => '');
+          throw new Error(`Request failed ${res.status}: ${txt}`);
+        }
+        return res.blob();
+      }
+
+      document.getElementById('extractBtn').onclick = async () => {
+        const btn = document.getElementById('extractBtn');
+        const f = document.getElementById('file').files[0];
+        if (!f) return alert('Choose a file');
+        const form = new FormData();
+        form.append('file', f);
+        form.append('preeti', 'auto');
+        try {
+          btn.disabled = true;
+          setStatus('Extracting and normalizing text...');
+          const data = await safeFetchJSON('/extract', { method: 'POST', body: form });
+          document.getElementById('original').value = data.text || '';
+          setStatus('Extraction complete');
+        } catch (err) {
+          setStatus(err.message, true);
+        } finally {
+          btn.disabled = false;
+        }
+      };
+
+      document.getElementById('translateBtn').onclick = async () => {
+        const btn = document.getElementById('translateBtn');
+        const text = document.getElementById('original').value;
+        if (!text) return alert('Nothing to translate');
+        const form = new URLSearchParams();
+        form.append('text', text);
+        form.append('src', 'ne');
+        form.append('dest', 'en');
+        try {
+          btn.disabled = true;
+          setStatus('Translating...');
+          const data = await safeFetchJSON('/translate', { method: 'POST', body: form });
+          document.getElementById('translated').value = data.translated_text || '';
+          setStatus('Translation complete');
+        } catch (err) {
+          setStatus(err.message, true);
+        } finally {
+          btn.disabled = false;
+        }
+      };
+
+      document.getElementById('downloadBtn').onclick = async () => {
+        const btn = document.getElementById('downloadBtn');
+        const title = 'translation';
+        const original = document.getElementById('original').value;
+        const translated = document.getElementById('translated').value;
+        const format = document.getElementById('format').value;
+        const body = new URLSearchParams();
+        body.append('title', title);
+        body.append('original', original);
+        body.append('translated', translated);
+        body.append('format', format);
+        try {
+          btn.disabled = true;
+          setStatus('Generating file...');
+          const blob = await safeFetchBlob('/download', { method: 'POST', body });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = title + '.' + format;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setStatus('Download started');
+        } catch (err) {
+          setStatus(err.message, true);
+        } finally {
+          btn.disabled = false;
+        }
+      };
+    </script>
+  </body>
+</html>
